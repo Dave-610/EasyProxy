@@ -138,6 +138,17 @@ class MaxstreamExtractor:
 
     async def _smart_request(self, url: str, method="GET", is_binary=False, **kwargs):
         """Request with automatic retry using different proxies and resolver fallback on connection failure."""
+        if url.startswith("data:"):
+            import base64
+            try:
+                # Support for data URIs (e.g. base64 captchas)
+                _, data = url.split(",", 1)
+                decoded = base64.b64decode(data)
+                return decoded if is_binary else decoded.decode("utf-8", errors="ignore")
+            except Exception as e:
+                logger.error(f"Failed to decode data URI: {e}")
+                return b"" if is_binary else ""
+
         last_error = None
         parsed_url = urlparse(url)
         domain = parsed_url.netloc
@@ -252,11 +263,11 @@ class MaxstreamExtractor:
         # Use lxml and search specifically for the captcha pattern
         soup = BeautifulSoup(text, "lxml")
         
-        # 1. Try to find captcha image
-        img_tag = soup.find("img", src=re.compile(r'/captcha|/image/|captcha\.php'))
+        # 1. Try to find captcha image (including base64)
+        img_tag = soup.find("img", src=re.compile(r'data:image/|/captcha|/image/|captcha\.php'))
         if not img_tag:
             # Fallback to regex for captcha image
-            img_match = re.search(r'<img[^>]+src=["\']([^"\']*(?:captcha|image|captcha\.php)[^"\']*)["\']', text)
+            img_match = re.search(r'<img[^>]+src=["\']([^"\']*(?:data:image/|captcha|image|captcha\.php)[^"\']*)["\']', text)
             if img_match:
                 img_url = img_match.group(1)
             else:
